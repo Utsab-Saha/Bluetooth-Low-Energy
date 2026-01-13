@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1029804686288",
+    "project_id": "proximity-feature---superx",
+    "storage_bucket": "proximity-feature---superx.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1029804686288:android:015f14edc512050b0117d5",
+        "android_client_info": {
+          "package_name": "com.example.ble"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCKWbvuNh4W6cGBq9iAEEVaestu0K-MU-8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,14 @@
+.gradle/
+.local/
+.kotlin/
+.idea/
+build/
+*/build/
+.res/
+.test/
+google-service.json
+build.gradle.kts
+proguard-rules.pro
+*.iml
+*.apk
+*.aab
