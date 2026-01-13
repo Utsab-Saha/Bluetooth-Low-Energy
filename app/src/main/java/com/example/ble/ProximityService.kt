@@ -57,10 +57,12 @@ class ProximityService : Service() {
             while (isActive) {
                 Log.d("PROXIMITY", "Scanning ON")
                 scanner.start()
+
                 delay(BleTiming.SCAN_WINDOW_MS)
                 scanner.stop()
                 Log.d("PROXIMITY", "Scanning OFF")
-                delay(BleTiming.IDLE_WINDOW_MS)
+
+                delay(BleTiming.IDLE_WINDOW_MS + 2000)
             }
         }
     }

@@ -12,6 +12,7 @@ import androidx.annotation.RequiresPermission
 import androidx.core.content.ContextCompat
 import androidx.core.util.isNotEmpty
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 
 class BleScanner(
     private val context: Context,
@@ -23,36 +24,47 @@ class BleScanner(
         private const val TAG = "BleScanner"
     }
 
-    private val scanner = run {
-        val manager =
-            context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
-        manager?.adapter?.bluetoothLeScanner
-    }
+    private val bluetoothAdapter =
+        (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
 
-    private val callback = object : ScanCallback() {
+    private val scanner: BluetoothLeScanner? =
+        bluetoothAdapter?.bluetoothLeScanner
+
+    // 🔒 CRITICAL: prevents duplicate startScan()
+    private val isScanning = AtomicBoolean(false)
+
+    private val scanCallback = object : ScanCallback() {
 
         override fun onScanResult(callbackType: Int, result: ScanResult) {
-            val manufacturerData =
-                result.scanRecord?.manufacturerSpecificData ?: return
+            val record = result.scanRecord ?: return
+            val manufacturerData = record.manufacturerSpecificData
 
-            if (manufacturerData.isNotEmpty()) {
-                val payload = manufacturerData.valueAt(0)
+            if (manufacturerData == null || manufacturerData.size() == 0) return
 
-                // Convert payload → user ID
-                val nearbyUserId = payload.decodeToString()
-                val rssi = result.rssi
+            val payload = manufacturerData.valueAt(0)
+            if (payload.isEmpty()) return
 
-                repository.recordEncounter(
-                    myUserId = myUserId,
-                    nearbyUserId = nearbyUserId,
-                    rssi = rssi
-                )
-
-                Log.d(TAG, "Encounter detected: $nearbyUserId (RSSI=$rssi)")
+            val nearbyUserId = try {
+                payload.decodeToString()
+            } catch (e: Exception) {
+                Log.w(TAG, "Invalid manufacturer payload")
+                return
             }
+
+            val rssi = result.rssi
+
+            repository.recordEncounter(
+                myUserId = myUserId,
+                nearbyUserId = nearbyUserId,
+                rssi = rssi
+            )
+
+            Log.d(TAG, "Encounter detected: $nearbyUserId (RSSI=$rssi)")
         }
 
+
         override fun onScanFailed(errorCode: Int) {
+            isScanning.set(false)
             Log.e(TAG, "BLE scan failed: $errorCode")
         }
     }
@@ -69,8 +81,20 @@ class BleScanner(
         ]
     )
     fun start() {
-        if (!isBleScanAllowed()) return
-        if (scanner == null) return
+        if (isScanning.get()) {
+            Log.w(TAG, "start() ignored → already scanning")
+            return
+        }
+
+        if (!isBleScanAllowed()) {
+            Log.e(TAG, "BLE scan not allowed (permission)")
+            return
+        }
+
+        if (scanner == null || !bluetoothAdapter.isEnabled) {
+            Log.e(TAG, "Bluetooth unavailable or disabled")
+            return
+        }
 
         val filter = ScanFilter.Builder()
             .setServiceUuid(
@@ -78,15 +102,21 @@ class BleScanner(
             )
             .build()
 
+        // ⚠️ LOW_LATENCY causes crashes on Vivo/Oppo
         val settings = ScanSettings.Builder()
-            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+            .setScanMode(ScanSettings.SCAN_MODE_BALANCED)
             .build()
 
         try {
-            scanner.startScan(listOf(filter), settings, callback)
+            isScanning.set(true)
+            scanner.startScan(listOf(filter), settings, scanCallback)
             Log.d(TAG, "BLE scanning started")
         } catch (e: SecurityException) {
-            Log.e(TAG, "BLE scanning failed", e)
+            isScanning.set(false)
+            Log.e(TAG, "Scan start blocked by OEM", e)
+        } catch (e: Exception) {
+            isScanning.set(false)
+            Log.e(TAG, "Unexpected scan error", e)
         }
     }
 
@@ -95,13 +125,17 @@ class BleScanner(
         allOf = [Manifest.permission.BLUETOOTH_SCAN]
     )
     fun stop() {
+        if (!isScanning.get()) return
         if (scanner == null) return
 
         try {
-            scanner.stopScan(callback)
+            scanner.stopScan(scanCallback)
             Log.d(TAG, "BLE scanning stopped")
-        } catch (e: SecurityException) {
-            Log.e(TAG, "Scan couldn't be stopped", e)
+        } catch (e: Exception) {
+            // OEMs sometimes throw here — ignore safely
+            Log.w(TAG, "stopScan exception ignored", e)
+        } finally {
+            isScanning.set(false)
         }
     }
 
