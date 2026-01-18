@@ -2,7 +2,7 @@ const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 
 admin.initializeApp();
-
+// hvjhkj
 exports.onEncounter = functions.firestore
   .document("encounters/{id}")
   .onCreate(async (snap) => {
